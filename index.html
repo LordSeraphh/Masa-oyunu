@@ -1,60 +1,79 @@
 <!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mülk Ustası</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:#14213d;color:#eee;min-height:100vh}
-button{background:#fca311;border:0;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;margin:3px}
+*{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:radial-gradient(circle at 30% 20%,#27407a,#0b1330 70%) fixed;color:#eee;min-height:100vh}
+button{background:linear-gradient(#ffb703,#fb8500);border:0;border-radius:9px;padding:9px 14px;font-weight:700;cursor:pointer;margin:3px;color:#222}
 button.g{background:#415a77;color:#fff}button:disabled{opacity:.4}
-input[type=text],input[type=number]{padding:7px;border-radius:6px;border:0;width:110px}
-.box{max-width:480px;margin:6vh auto;background:#1d2d50;padding:22px;border-radius:14px}
+input[type=text],input[type=number]{padding:7px;border-radius:6px;border:0;width:120px}
+.box{max-width:520px;margin:5vh auto;background:#1d2d50cc;padding:24px;border-radius:16px;box-shadow:0 10px 40px #0008}
+h1{margin:0 0 8px;font-size:34px;text-align:center;background:linear-gradient(90deg,#ffb703,#e63946);-webkit-background-clip:text;color:transparent}
 .row{display:flex;justify-content:space-between;align-items:center;margin:8px 0;gap:8px}
 .board{display:grid;grid-template:repeat(8,1fr)/repeat(8,1fr);width:min(98vw,94vh);aspect-ratio:1;margin:8px auto;gap:2px}
-.t{background:#e8e2cf;color:#222;border:3px solid #bbb;border-radius:5px;font-size:min(1.3vw,1.3vh,11px);padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden;font-size:clamp(7px,1.25vmin,12px)}
+.t{background:#e8e2cf;color:#222;border:3px solid #bbb;border-radius:5px;padding:2px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden;font-size:clamp(7px,1.2vmin,12px);cursor:default}
 .t i{position:absolute;top:0;left:0;right:0;height:5px}.t .tk{display:flex;gap:1px;flex-wrap:wrap;justify-content:center}
-.pn{width:1.6vmin;height:1.6vmin;min-width:9px;min-height:9px;border-radius:50%;border:1px solid #000;display:inline-block}
+.pn{width:1.8vmin;height:1.8vmin;min-width:10px;min-height:10px;border-radius:50%;border:1px solid #000;display:inline-block}
+.cur{animation:bl .7s infinite alternate}@keyframes bl{from{box-shadow:0 0 0 2px #fff,0 0 14px 4px #ffb703;background:#fff3c4}to{box-shadow:none}}
+.hl{animation:hb .5s infinite alternate;cursor:pointer;outline:3px solid #39ff14}@keyframes hb{to{transform:scale(1.08)}}
 .ctr{grid-area:2/2/8/8;background:#1d2d50;border-radius:10px;padding:8px;overflow:auto;font-size:clamp(9px,1.7vmin,14px)}
-.ctr table{width:100%;border-collapse:collapse}.ctr td{padding:2px 4px}.lg{opacity:.85;max-height:20%;overflow:auto;margin-top:6px}
+.ctr table{width:100%;border-collapse:collapse}.ctr td{padding:2px 4px}.turn{font-size:clamp(14px,3vmin,26px);font-weight:800}
+.card{border-radius:10px;padding:8px;margin:6px 0;text-align:center;color:#fff}.card b{font-size:clamp(13px,2.6vmin,22px);display:block}
+.ov{position:fixed;inset:0;background:#000a;z-index:9;display:flex;align-items:center;justify-content:center}.ov>div{background:#1d2d50;border-radius:12px;padding:16px;width:min(92vw,520px);max-height:80vh;overflow:auto}
 .dice{font-size:clamp(20px,5vmin,40px)}
 </style></head><body><div id="app"></div>
 <script>
-let S=null,me=-1,id=localStorage.mm_id||'',lastKey='';
+let S=null,R=JSON.parse(localStorage.mm||'{}'),lastKey='',showLog=false,timer;
 const $=e=>document.getElementById(e),app=$('app');
-async function post(u,b){const r=await(await fetch(u,{method:'POST',body:JSON.stringify({id,...b})})).json();if(r.err)alert(r.err);return r}
-async function join(){const r=await post('/join',{name:$('nm').value});if(r.id){id=r.id;localStorage.mm_id=id}if(r.me!==undefined)me=r.me}
-async function init(){if(id){const r=await post('/join',{id});me=r.me!==undefined?r.me:-1;if(me<0){id='';localStorage.mm_id=''}}
-  const es=new EventSource('/events');es.onmessage=e=>{S=JSON.parse(e.data);render()}}
+const f=n=>(n>=1e6?(n/1e6).toFixed(2).replace(/\.?0+$/,'')+'M':Math.round(n/1000)+'k')+' ₺';
+async function post(u,b={}){const r=await(await fetch(u,{method:'POST',body:JSON.stringify({id:R.id,room:R.room,...b})})).json();if(r.err)alert(r.err);return r}
+function enter(r){if(r.id){R={room:r.room,id:r.id,me:r.me};localStorage.mm=JSON.stringify(R);connect()}}
+const nm=()=>($('nm').value||'').trim()||'Oyuncu';
+async function create(){enter(await post('/create',{name:nm(),id:''}))}
+async function joinRoom(c){enter(await post('/join',{name:nm(),room:c,id:''}))}
+function leave(){localStorage.mm='';R={};S=null;location.reload()}
+function connect(){const es=new EventSource('/events?room='+R.room);es.onmessage=e=>{S=JSON.parse(e.data);render()};es.onerror=()=>{if(es.readyState===2)leave()}}
+async function init(){clearInterval(timer);if(R.id){const r=await post('/join',{});if(r.id)return connect();R={};localStorage.mm=''}entry()}
+async function entry(){app.innerHTML=`<div class=box><h1>🎲 MÜLK USTASI</h1><p style="text-align:center;opacity:.8">Şehirleri al, geliştir, rakiplerini iflas ettir!</p>
+ <div class=row><input id=nm type=text placeholder="Adın" maxlength=12 style="width:100%"></div><button style="width:100%" onclick="create()">➕ Yeni Oda Kur</button><h3>Açık Odalar</h3><div id=rl>Yükleniyor…</div></div>`;
+ const up=async()=>{if(R.id||!$('rl'))return;const r=await post('/rooms');if($('rl'))$('rl').innerHTML=r.list.length?r.list.map(o=>`<div class=row><span>Oda <b>${o.code}</b> · ${o.host} · ${o.n}/4</span><button onclick="joinRoom('${o.code}')">Katıl</button></div>`).join(''):'Açık oda yok, bir tane kur!'};
+ up();timer=setInterval(up,4000)}
+function setS(){act('set',{s:{startMoney:$('sm').value,salary:$('sl').value,chanceBad:$('cb').value,taxPct:$('tx').value,jailFee:$('jf').value,timeMin:$('tmn').value,maxRounds:$('mr').value,teams:$('tm').checked}})}
 const act=(type,x={})=>post('/act',{type,...x});
-function setS(){act('set',{s:{startMoney:$('sm').value,salary:$('sl').value,chanceGood:$('cg').value,taxPct:$('tx').value,maxRounds:$('mr').value,teams:$('tm').checked}})}
-function render(){
-  if(!S)return;
-  if(me<0||!S.players[me]){const k='j'+S.phase+S.players.length;if(k===lastKey)return;lastKey=k;
-    app.innerHTML=`<div class=box><h2>🎲 Mülk Ustası</h2>${S.phase==='lobby'?`<p>Oyuncular: ${S.players.map(p=>p.name).join(', ')||'-'}</p><input id=nm type=text placeholder="Adın" maxlength=12> <button onclick="join()">Katıl</button>`:'<p>Oyun başladı, şu an katılamazsın.</p>'}</div>`;return}
-  if(S.phase==='lobby')return lobby();
-  game()}
-function lobby(){const T=S.settings,host=me===0,k='l'+JSON.stringify([S.players,T]);if(k===lastKey)return;lastKey=k;const d=host?'':'disabled';
-  const n=(l,i,v,mn,mx)=>`<div class=row><span>${l}</span><input id=${i} type=number value=${v} min=${mn} max=${mx} ${d} onchange="setS()"></div>`;
-  app.innerHTML=`<div class=box><h2>🎲 Bekleme Odası</h2><p>${S.players.map((p,i)=>`<span style="color:${p.color}">●</span> ${p.name}${i===0?' (ev sahibi)':''}`).join('<br>')}</p><hr>
-  ${n('Başlangıç parası (₺)','sm',T.startMoney,100,100000)}${n('Tur maaşı (₺)','sl',T.salary,0,5000)}${n('Şans: iyi kart olasılığı (%)','cg',T.chanceGood,0,100)}${n('Vergi oranı (mülk değeri %)','tx',T.taxPct,0,100)}${n('Tur limiti (0 = sınırsız)','mr',T.maxRounds,0,500)}
-  <div class=row><span>Eşli oyun 2v2 (4 kişi; 1&amp;3 vs 2&amp;4. oyuncu)</span><input id=tm type=checkbox ${T.teams?'checked':''} ${d} onchange="setS()"></div>
-  ${host?'<button onclick="act(\'start\')">Oyunu Başlat</button>':'<p>Ev sahibinin başlatması bekleniyor…</p>'}</div>`}
-const hue=p=>`hsl(${p/350*300},60%,55%)`;
+function render(){if(!S)return;S.phase==='lobby'?lobby():game()}
+function lobby(){const T=S.settings,host=R.me===0,k='l'+JSON.stringify([S.players,T]);if(k===lastKey)return;lastKey=k;const d=host?'':'disabled';
+  const n=(l,i,v)=>`<div class=row><span>${l}</span><input id=${i} type=number value=${v} ${d} onchange="setS()"></div>`;
+  app.innerHTML=`<div class=box><h1>Oda ${S.code}</h1><p style="text-align:center">Arkadaşlarına bu oda kodunu söyle (ana ekrandaki listeden katılırlar).</p>
+  <p>${S.players.map((p,i)=>`<span style="color:${p.color}">●</span> ${p.name}${i===0?' 👑':''}`).join('<br>')}</p><hr>
+  ${n('Başlangıç parası (₺)','sm',T.startMoney)}${n('Tur maaşı (₺)','sl',T.salary)}${n('Kötü şans olasılığı (%)','cb',T.chanceBad)}${n('Vergi oranı (mülk değeri %)','tx',T.taxPct)}${n('Hapisten çıkış ücreti (₺)','jf',T.jailFee)}${n('Süre limiti (dakika, 0 = yok)','tmn',T.timeMin)}${n('Tur limiti (0 = yok)','mr',T.maxRounds)}
+  <div class=row><span>Eşli oyun 2v2 (4 kişi; 1&amp;3 vs 2&amp;4)</span><input id=tm type=checkbox ${T.teams?'checked':''} ${d} onchange="setS()"></div>
+  ${host?'<button onclick="act(\'start\')">▶ Oyunu Başlat</button>':'<p>Oda sahibinin başlatması bekleniyor…</p>'}<button class=g onclick="leave()">Odadan Çık</button></div>`}
+const hue=p=>`hsl(${p/350000*300},60%,55%)`,ICON=['','🚩','🏠','🏢','🏰'];
 function bpos(i){return i<=7?[7,7-i]:i<=14?[14-i,0]:i<=21?[0,i-14]:[i-21,7]}
-function game(){lastKey='';const P=S.players,cur=P[S.turn],my=S.turn===me&&S.phase==='play',nwf=i=>P[i].money+Object.keys(S.owners).filter(k=>S.owners[k]===i).reduce((s,t)=>s+S.tiles[t].price*(1+(S.levels[t]||0)/2),0);
+const val=t=>S.tiles[t].price+(S.spent[t]||0);
+function tileClick(i){if(S.choice&&S.choice.pid===R.me&&hl().includes(i))act('pick',{tile:i})}
+const hl=()=>{const c=S.choice;return c&&c.pid===R.me?(c.kind==='debt'?Object.keys(S.owners).filter(k=>S.owners[k]===R.me).map(Number):c.tiles):[]};
+function game(){lastKey='';const P=S.players,cur=P[S.turn],me=R.me,my=S.turn===me&&S.phase==='play',H=hl(),ch=S.choice,nwf=i=>P[i].money+Object.keys(S.owners).filter(k=>S.owners[k]===i).reduce((s,t)=>s+val(t),0);
   const tiles=S.tiles.map((t,i)=>{const[r,c]=bpos(i),o=S.owners[i],tk=P.filter(p=>p.alive&&p.pos===i).map(p=>`<span class=pn style="background:${p.color}"></span>`).join(''),lv=S.levels[i]||0;
-    return`<div class=t style="grid-row:${r+1};grid-column:${c+1};${o!==undefined?`border-color:${P[o].color}`:''}">${t.type==='P'?`<i style="background:${hue(t.price)}"></i>`:''}<b>${{C:'❓ ',T:'💸 ',R:'☕ '}[t.type]||''}${t.name}</b>${t.price?`<span>₺${t.price}</span>`:''}${lv?'🏠'.repeat(lv):''}<div class=tk>${tk}</div></div>`}).join('');
+    const ex=(S.shield[i]?'🛡️':'')+(S.blackout[i]>S.round?'🔌':'')+(S.champ&&S.champ.tile===i?'🏆x'+S.champ.mult:'');
+    return`<div class="t ${S.phase==='play'&&cur.pos===i?'cur':''} ${H.includes(i)?'hl':''}" onclick="tileClick(${i})" style="grid-row:${r+1};grid-column:${c+1};${o!==undefined?`border-color:${P[o].color}`:''}">${t.type==='P'?`<i style="background:${hue(t.price)}"></i>`:''}<b>${{C:'❓ ',T:'💸 ',J:'🚔 ',A:'✈️ ',K:'🏆 '}[t.type]||''}${t.name}</b>${t.price?`<span>${f(t.price)}</span>`:''}<span>${ICON[lv]}${ex}</span><div class=tk>${tk}</div></div>`}).join('');
   let ctl='';
-  if(S.phase==='play'){ctl=`<div class=row><b style="color:${cur.color}">Sıra: ${cur.name}${S.settings.maxRounds?` · Tur ${S.round}/${S.settings.maxRounds}`:` · Tur ${S.round}`}</b><span class=dice>🎲 ${S.dice[0]||'-'} ${S.dice[1]||'-'}</span></div>`;
-    if(my){if(S.step==='roll')ctl+=`<button onclick="act('roll')">Zar At</button>`;
-      if(S.step==='buy'){const t=S.tiles[S.pending];ctl+=`<button onclick="act('buy')">${t.name} satın al (₺${t.price})</button><button class=g onclick="act('skip')">Geç</button>`}
-      if(S.step==='act'){ctl+=`<button onclick="act('end')">Turu Bitir</button>`;
-        Object.keys(S.owners).filter(k=>S.owners[k]===me&&(S.levels[k]||0)<3).forEach(k=>{const c=Math.round(S.tiles[k].price/2);ctl+=`<button class=g ${P[me].money<c?'disabled':''} onclick="act('build',{tile:${k}})">🏠 ${S.tiles[k].name} (₺${c})</button>`})}}
+  if(S.phase==='play'){ctl=`<div class=row><span class=turn style="color:${cur.color}">🎯 Sıra: ${cur.name}${my?' (SEN)':''}</span><span class=dice>🎲 ${S.dice[0]||'-'} ${S.dice[1]||'-'}</span></div><small>Tur ${S.round}${S.settings.maxRounds?'/'+S.settings.maxRounds:''}${S.endAt?` · ⏱ <span id=tl></span>`:''}</small>`;
+    if(S.card)ctl+=`<div class=card style="background:${S.card.bad?'#9b2226':'#2d6a4f'}"><small>${P[S.card.who].name}</small><b>${S.card.name}</b>${S.card.text}</div>`;
+    if(ch){if(ch.pid===me){ctl+=`<p><b>👉 ${ch.kind==='debt'?`Borcun ${f(ch.amt)}. Para yetmiyor, satacağın mülkleri seç (yarı fiyatına satılır). Elindeki: ${f(P[me].money)}`:ch.text}</b></p>`;
+        if(ch.kind==='debt')ctl+=H.map(t=>`<button class=g onclick="act('pick',{tile:${t}})">${S.tiles[t].name} → ${f(Math.round(val(t)/2))}</button>`).join('');else ctl+='<p>Yeşil yanıp sönen kareye tıkla.</p>'}
+      else ctl+=`<p>${P[ch.pid].name} seçim yapıyor…</p>`}
+    else if(my){if(S.step==='roll'){if(cur.jail)ctl+=`<p>🚔 Hapistesin: çift zar at ya da ücret öde.</p><button onclick="act('roll')">Çift Zar Dene</button><button class=g onclick="act('payjail')">${f(S.settings.jailFee)} Öde</button>`;else ctl+=`<button onclick="act('roll')">🎲 Zar At</button>`}
+      if(S.step==='buy'){const b=S.pending;ctl+=`<button onclick="act('buy')">${S.tiles[b.tile].name} satın al (${f(b.price)}${b.seller!==null?' · '+P[b.seller].name+"'den":''})</button><button class=g onclick="act('skip')">Geç</button>`}
+      if(S.step==='act'){ctl+=`<button onclick="act('end')">Turu Bitir</button>`;const t=cur.pos,l=S.levels[t]||0;
+        if(S.owners[t]===me&&l<4){const c=[0,.3,.5,.7,1][l+1]*S.tiles[t].price;ctl+=`<button class=g onclick="act('build')">🏗 ${S.tiles[t].name} geliştir → ${ICON[l+1]} (${f(c)})</button>`}}}
     else ctl+=`<p>${cur.name} oynuyor…</p>`}
-  else ctl=`<h3>🏆 ${S.winner}</h3><canvas id=ch width=700 height=320 style="width:100%;background:#0d1b3a;border-radius:8px"></canvas><div id=lg></div>${me===0?'<button onclick="act(\'again\')">Yeni Oyun (Bekleme Odası)</button>':''}`;
-  const tb=P.map((p,i)=>`<tr style="color:${p.alive?p.color:'#888'}"><td>${p.name}${S.settings.teams?(i%2?' [B]':' [A]'):''}${i===me?' (sen)':''}${p.shield?' 🛡️':''}${p.alive?'':' 💀'}</td><td>₺${p.money}</td><td>Toplam: ₺${Math.round(nwf(i))}</td></tr>`).join('');
-  app.innerHTML=`<div class=board>${tiles}<div class=ctr>${ctl}<table>${tb}</table><div class=lg>${S.log.slice(0,S.phase==='play'?8:5).join('<br>')}</div></div></div>`;
-  if(S.phase==='over')chart()}
-function chart(){const c=$('ch'),x=c.getContext('2d'),H=S.history,P=S.players,W=c.width,Ht=c.height,L=60,B=25,mx=Math.max(1,...H.flatMap(h=>h.nw))*1.05;
+  else ctl=`<h3>🏆 ${S.winner}</h3><canvas id=ch width=700 height=320 style="width:100%;background:#0d1b3a;border-radius:8px"></canvas><div id=lg></div>${R.me===0?'<button onclick="act(\'again\')">Yeni Oyun</button>':''}`;
+  const tb=P.map((p,i)=>`<tr style="color:${p.alive?p.color:'#888'}"><td>${p.name}${S.settings.teams?(i%2?' [B]':' [A]'):''}${i===me?' (sen)':''}${p.jail?' 🚔':''}${p.alive?'':' 💀'}</td><td>${f(p.money)}</td><td>Toplam: ${f(nwf(i))}</td></tr>`).join('');
+  app.innerHTML=`<div class=board>${tiles}<div class=ctr>${ctl}<table>${tb}</table><button class=g onclick="showLog=true;render()">📜 Olaylar</button><button class=g onclick="leave()">Çık</button></div></div>${showLog?`<div class=ov onclick="showLog=false;render()"><div onclick="event.stopPropagation()"><div class=row><b>📜 Olay Geçmişi</b><button onclick="showLog=false;render()">Kapat</button></div>${S.log.join('<br>')}</div></div>`:''}`;
+  if(S.phase==='over')chart();tick()}
+function tick(){clearInterval(timer);if(S.phase==='play'&&S.endAt){const u=()=>{const e=$('tl');if(e){const s=Math.max(0,Math.round((S.endAt-Date.now())/1000));e.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}};u();timer=setInterval(u,1000)}}
+function chart(){const c=$('ch'),x=c.getContext('2d'),H=S.history,P=S.players,W=c.width,Ht=c.height,L=70,B=25,mx=Math.max(1,...H.flatMap(h=>h.nw))*1.05;
   x.strokeStyle='#345';x.fillStyle='#9ab';x.font='12px sans-serif';
-  for(let g=0;g<=4;g++){const y=Ht-B-(Ht-B-15)*g/4;x.beginPath();x.moveTo(L,y);x.lineTo(W-10,y);x.stroke();x.fillText('₺'+Math.round(mx*g/4),4,y+4)}
+  for(let g=0;g<=4;g++){const y=Ht-B-(Ht-B-15)*g/4;x.beginPath();x.moveTo(L,y);x.lineTo(W-10,y);x.stroke();x.fillText(f(mx*g/4),4,y+4)}
   const X=i=>L+(W-L-15)*(H.length<2?0:i/(H.length-1));
   [0,Math.floor((H.length-1)/2),H.length-1].forEach(i=>x.fillText('Tur '+H[i].r,X(i)-14,Ht-6));
   P.forEach((p,j)=>{x.strokeStyle=p.color;x.lineWidth=3;x.beginPath();H.forEach((h,i)=>{const y=Ht-B-(Ht-B-15)*h.nw[j]/mx;i?x.lineTo(X(i),y):x.moveTo(X(i),y)});x.stroke()});
